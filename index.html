@@ -469,6 +469,20 @@ button[aria-pressed="true"] {
 #evcard { display: none; }
 #evcard.visible { display: block; }
 
+/* Ring: the 12-LED lamp beside the plant, drawn from the same pixels it shows */
+#ringcard { display: none; margin-bottom: 1.25rem; }
+#ringcard.visible { display: block; }
+.ring-body { display: flex; gap: 1.75rem; align-items: center; flex-wrap: wrap; }
+.ring-svg { width: 168px; height: 168px; flex: none; }
+.ring-svg circle.led { transition: fill 1.2s ease, opacity 1.2s ease; }
+.ring-text { flex: 1; min-width: 220px; }
+.ring-label { font-family: var(--font-display); font-size: 2.1rem; line-height: 1.1; color: var(--text); }
+.ring-sub { color: var(--text-dim); font-size: 0.9rem; margin-top: 0.35rem; }
+.ring-meta { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.6rem; }
+.ring-strip { display: flex; height: 14px; margin-top: 1.1rem; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+.ring-strip span { flex: 1; }
+.ring-strip-axis { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.72rem; margin-top: 0.25rem; }
+
 /* Footer */
 footer {
   padding: 56px 0;
@@ -553,6 +567,20 @@ footer a:hover { text-decoration: underline; }
     <div id="dashboard-loading" class="loading">Loading sensor data...</div>
     <div id="dashboard-error" class="error-state" style="display:none"></div>
     <div id="dashboard-content" style="display:none">
+      <article class="card wide" id="ringcard">
+        <div class="card-head"><h3>The ring, right now</h3></div>
+        <div class="ring-body">
+          <svg class="ring-svg" id="ring-svg" viewBox="0 0 168 168" role="img" aria-label="Ring light state"></svg>
+          <div class="ring-text">
+            <div class="ring-label" id="ring-label">–</div>
+            <div class="ring-sub" id="ring-sub"></div>
+            <div class="ring-meta" id="ring-meta"></div>
+          </div>
+        </div>
+        <div class="ring-strip" id="ring-strip"></div>
+        <div class="ring-strip-axis"><span>24 hours ago</span><span>now</span></div>
+      </article>
+
       <div class="controls">
         <div class="control-group" id="rangebar">
           <span class="label">Range</span>
@@ -588,7 +616,9 @@ footer a:hover { text-decoration: underline; }
       <strong>GSR sensor:</strong> The stem conductance readings have been unreliable. The very low readings (near zero) indicate periods when the electrodes were disconnected or poorly attached. I've tried several mounting methods - hair clips, alligator clips, custom clamps - and am currently testing a new setup. Compare readings only within periods of stable attachment.
     </div>
 
-    <p>The data shown here is delayed by 24 hours for privacy reasons (this is in my flat, after all). The dashboard updates once daily.</p>
+    <p>The sensor readings and the ring update live, every five minutes. The logged events are still delayed by 24 hours for privacy reasons (this is in my flat, after all).</p>
+
+    <p><strong>The ring:</strong> a 12-LED lamp beside Olivito shows how far the plant's tissue signal (GSR) and leaf activity (NDVI) sit from their own recent normal. Blues and greens are calm, ambers and reds are agitated, and it brightens as it climbs. When the two signals disagree, the LEDs alternate between them instead of averaging the conflict away. It rests between 21:00 and 07:00.</p>
 
     <h2>What's next</h2>
 
@@ -646,7 +676,9 @@ footer a:hover { text-decoration: underline; }
   let DATA, RAW, META, CHANNELS, EVENTS, NDVI;
   let MODE = 'hourly';
   let view, activeDays = 0, yRange = {};
+  let wired = false, lastGenerated = null;
   const charts = {};
+  const REFRESH_MS = 5 * 60 * 1000;
 
   // DOM refs
   const $loading = document.getElementById('dashboard-loading');
@@ -719,9 +751,13 @@ footer a:hover { text-decoration: underline; }
       window._olivito.tmsF = NDVI.flip.map(pt);
     }
 
-    view = allView();
+    // On a refresh, keep the reader's range: a preset follows the new data,
+    // a dragged selection stays where it was.
+    const keepView = lastGenerated !== null && activeDays === null;
+    if (!keepView) view = activeDays ? { x0: lf(END - activeDays * DAY), x1: lf(END + HOUR) } : allView();
     buildUI();
     applyView();
+    renderRing(data.ring);
   }
 
   function allView() {
@@ -790,11 +826,70 @@ footer a:hover { text-decoration: underline; }
     // Disable raw button if no raw data
     if (!o.NR) document.querySelector('#modebar button[data-mode="raw"]').disabled = true;
 
-    // Wire up controls
+    // Wire up controls once: buildUI runs again on every refresh, and a
+    // second set of listeners would fire every click twice.
+    if (wired) return;
+    wired = true;
     document.querySelectorAll('#rangebar button').forEach(b => b.addEventListener('click', () => setDays(+b.dataset.days)));
     document.querySelectorAll('#modebar button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
     window.addEventListener('resize', () => { cancelAnimationFrame(window._rz); window._rz = requestAnimationFrame(drawAll); });
+  }
+
+  const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+
+  function renderRing(ring) {
+    const card = document.getElementById('ringcard');
+    if (!ring) { card.classList.remove('visible'); return; }
+    card.classList.add('visible');
+
+    // LEDs: built once, then only recoloured, so the CSS transition fades
+    // between refreshes the way the real ring does.
+    const svg = document.getElementById('ring-svg');
+    if (!svg.childNodes.length) {
+      const glow = document.createElementNS(SVGNS, 'filter');
+      glow.id = 'ledglow';
+      glow.innerHTML = '<feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>';
+      svg.appendChild(glow);
+      ring.pixels.forEach((_, i) => {
+        const a = (i / ring.pixels.length) * 2 * Math.PI - Math.PI / 2;
+        const c = document.createElementNS(SVGNS, 'circle');
+        c.setAttribute('class', 'led');
+        c.setAttribute('cx', (84 + 62 * Math.cos(a)).toFixed(1));
+        c.setAttribute('cy', (84 + 62 * Math.sin(a)).toFixed(1));
+        c.setAttribute('r', '11');
+        c.setAttribute('filter', 'url(#ledglow)');
+        svg.appendChild(c);
+      });
+    }
+    const resting = !ring.on;
+    // Brightness maps onto opacity: dim when calm, full at the ring's ceiling.
+    const op = resting ? 0.12 : 0.45 + 0.55 * Math.min(ring.brightness / ring.max_brightness, 1);
+    svg.querySelectorAll('circle.led').forEach((c, i) => {
+      c.setAttribute('fill', resting ? 'var(--text-muted)' : rgb(ring.pixels[i]));
+      c.setAttribute('opacity', op.toFixed(2));
+    });
+
+    const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
+    document.getElementById('ring-label').textContent =
+      resting && ring.off_reason === 'quiet_hours' ? 'resting' : (ring.label || 'unknown');
+    let sub;
+    if (resting && ring.off_reason === 'quiet_hours') sub = `Lamp off until 07:00. Last reading: ${ring.label}, ${pct(ring.index)}.`;
+    else if (ring.mode === 'unknown') sub = 'No usable signal: the lamp shows its "nothing to tell you" purple.';
+    else if (ring.mode === 'split') sub = `Mixed: tissue at ${pct(ring.gsr_index)}, leaves at ${pct(ring.ndvi_index)}. They disagree, so the LEDs alternate between them.`;
+    else sub = `Agitation ${pct(ring.index)}, from ${ring.sources.map(s => s === 'gsr' ? 'tissue' : 'leaves').join(' and ')}.`;
+    document.getElementById('ring-sub').textContent = sub;
+    document.getElementById('ring-meta').textContent = 'As of ' + ring.t.replace('T', ' ');
+
+    const strip = document.getElementById('ring-strip');
+    strip.innerHTML = '';
+    ring.history.forEach(([t, idx, label, color]) => {
+      const s = document.createElement('span');
+      s.style.background = rgb(color);
+      s.title = `${t.replace('T', ' ')}  ${label}${idx == null ? '' : ' (' + pct(idx) + ')'}`;
+      strip.appendChild(s);
+    });
   }
 
   function lastNonNull(arr) { for (let i = arr.length - 1; i >= 0; i--) if (arr[i] != null) return i; return -1; }
@@ -1081,11 +1176,32 @@ footer a:hover { text-decoration: underline; }
       $loading.style.display = 'none';
       $content.style.display = 'block';
       init(data);
+      lastGenerated = data.generated_at;
     })
     .catch(err => {
       console.error('Failed to load Olivito data:', err);
       showError('Could not load sensor data. ' + err.message);
     });
+
+  // Live: the Pi publishes every 5 minutes. Re-fetch on the same clock and
+  // redraw only when the data actually moved. A failed refresh keeps the
+  // page as it is; the "Updated N min ago" status shows it going stale.
+  async function refresh() {
+    if (lastGenerated === null) return;
+    try {
+      const data = await fetchData();
+      if (data.generated_at !== lastGenerated) {
+        init(data);
+        lastGenerated = data.generated_at;
+      }
+      updateStatus(lastGenerated);
+    } catch (err) {
+      console.warn('Refresh failed, keeping current data:', err);
+      updateStatus(lastGenerated);
+    }
+  }
+  setInterval(refresh, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 
 })();
 </script>
