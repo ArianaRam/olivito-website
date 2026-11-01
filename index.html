@@ -596,6 +596,10 @@ footer a:hover { text-decoration: underline; }
           <p><b>Tissue</b> is the electrical conductance of the stem, measured through the electrodes: the last few minutes compared with the last 6 hours. Only a rise counts. <b>Leaves</b> is how much light the leaves are turning into energy, read by the camera: the last hour compared with the past week. Only a drop counts.</p>
           <p>The ring blends the two, weighting tissue a little more because it reacts faster. When they disagree, it shows both instead of averaging them. Because everything is measured against recent history, any shift looks unusual for a while, including one from adjusting the electrodes, until the new level becomes the normal.</p>
         </div>
+        <div class="ring-explain" id="ring-explain-live" hidden>
+          <p><b>Temporary setup.</b> Since 31 October the stem sensor has been replaced by an AD8232, a biopotential amplifier reading the electrical signal across two leaves. While I finish integrating it, the ring is driven straight from it, ten times a second, instead of from the usual blend of stem conductance and leaf activity.</p>
+          <p>The percentage shows how far the last half second sits from the last 30 seconds, in either direction. Purple means the signal is pinned at the sensor's limit, usually a pad that has lost contact. The signal still picks up a lot of mains hum, so part of what moves the ring is people nearby, not only the plant. In this setup it rests between 21:30 and 06:30.</p>
+        </div>
       </article>
 
       <div class="controls">
@@ -889,11 +893,19 @@ footer a:hover { text-decoration: underline; }
     });
 
     const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
+    const live = ring.source === 'live';
+    document.getElementById('ring-explain-live').hidden = !live;
+    document.querySelector('.ring-explain:not(#ring-explain-live)').hidden = live;
     document.getElementById('ring-label').textContent =
       resting && ring.off_reason === 'quiet_hours' ? 'resting' : (ring.label || 'unknown');
     let sub;
-    if (resting && ring.off_reason === 'quiet_hours') sub = `Lamp off until 07:00. Last reading: ${ring.label}, ${pct(ring.index)}.`;
-    else if (ring.mode === 'unknown') sub = 'No usable signal: the lamp shows its "nothing to tell you" purple.';
+    if (resting && ring.off_reason === 'quiet_hours') sub = live
+      ? `Lamp off until ${ring.rest_end || '06:30'}.`
+      : `Lamp off until 07:00. Last reading: ${ring.label}, ${pct(ring.index)}.`;
+    else if (ring.mode === 'unknown') sub = live
+      ? 'No usable signal: the leaf electrodes are at their limit, so the lamp shows its "nothing to tell you" purple.'
+      : 'No usable signal: the lamp shows its "nothing to tell you" purple.';
+    else if (live) sub = `Agitation ${pct(ring.index)}, live from the leaf electrodes (temporary setup).`;
     else if (ring.mode === 'split') sub = `Mixed: tissue at ${pct(ring.gsr_index)}, leaves at ${pct(ring.ndvi_index)}. They disagree, so the LEDs alternate between them.`;
     else sub = `Agitation ${pct(ring.index)}, from ${ring.sources.map(s => s === 'gsr' ? 'tissue' : 'leaves').join(' and ')}.`;
     document.getElementById('ring-sub').textContent = sub;
