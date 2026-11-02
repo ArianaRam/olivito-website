@@ -30,6 +30,7 @@
   --grid: #f0ece4;
   --shadow: rgba(44, 36, 22, 0.06);
   --c-gsr: #7b68a6;
+  --c-ad8232: #4f5fb8;
   --c-soil: #5a8a6a;
   --c-lux: #c49a3a;
   --c-temp: #b85c38;
@@ -58,6 +59,7 @@
     --grid: #2a2826;
     --shadow: rgba(0, 0, 0, 0.3);
     --c-gsr: #a090c8;
+    --c-ad8232: #8a98e6;
     --c-soil: #7ab08a;
     --c-lux: #e0b84a;
     --c-temp: #d88060;
@@ -536,7 +538,7 @@ footer a:hover { text-decoration: underline; }
   <section class="prose">
     <p>I was curious what would happen to an AI that is coupled to a biological body. So I went ahead and rigged my Tradescantia plant with sensors that connect to a Raspberry Pi. See <em>Olivito</em> in the picture above.</p>
 
-    <p>I'm tracking light, humidity, temperature, soil moisture, electrical conductivity of the tissue, and plant health metrics through photography (NDVI - a visual plant health tracking method).</p>
+    <p>I'm tracking light, humidity, temperature, soil moisture, the electrical activity of the leaves (until October 2026, the electrical conductivity of the stem), and plant health metrics through photography (NDVI - a visual plant health tracking method).</p>
 
     <h2>The observer being observed</h2>
 
@@ -634,7 +636,11 @@ footer a:hover { text-decoration: underline; }
     <h2>Notes on the data</h2>
 
     <div class="note">
-      <strong>GSR sensor:</strong> The stem conductance readings have been unreliable. The very low readings (near zero) indicate periods when the electrodes were disconnected or poorly attached. I've tried several mounting methods - hair clips, alligator clips, custom clamps - and am currently testing a new setup. Compare readings only within periods of stable attachment.
+      <strong>GSR sensor (discontinued):</strong> The stem conductance readings ended on 31 October 2026, when I replaced the GSR sensor with an AD8232. They were unreliable throughout: the very low readings (near zero) indicate periods when the electrodes were disconnected or poorly attached, despite trying hair clips, alligator clips and custom clamps. Compare readings only within periods of stable attachment.
+    </div>
+
+    <div class="note">
+      <strong>AD8232 (since 31 October 2026):</strong> a biopotential amplifier reading the electrical signal across two leaves through gel pads, with a third pad as reference. It is still being set up: without a filter it picks up a lot of 50 Hz mains hum, so readings swing widely and often sit at the sensor's 3.2 V ceiling. Treat it as experimental until the filter is in.
     </div>
 
     <p>The sensor readings and the ring update live, every five minutes. The logged events are still delayed by 24 hours for privacy reasons (this is in my flat, after all).</p>
@@ -672,6 +678,7 @@ footer a:hover { text-decoration: underline; }
   // Colors per channel
   const COLORS = {
     gsr_voltage: '--c-gsr',
+    ad8232_voltage: '--c-ad8232',
     soil_voltage: '--c-soil',
     lux: '--c-lux',
     temperature_c: '--c-temp',
@@ -680,8 +687,11 @@ footer a:hover { text-decoration: underline; }
     ndvi_proxy: '--c-ndvi'
   };
 
-  // Note to show on GSR card
-  const GSR_NOTE = 'Very low readings indicate disconnected electrodes.';
+  // Notes shown under a channel's chart
+  const CARD_NOTES = {
+    gsr_voltage: 'Discontinued on 31 October 2026, replaced by the AD8232. Very low readings indicate disconnected electrodes.',
+    ad8232_voltage: 'Since 31 October 2026. Still picks up mains hum, so readings near 3.2 V are the sensor at its limit, not the plant.'
+  };
 
   const LANES = ['Water', 'Touch', 'Meditate', 'Stress', 'Away', 'Note'];
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -807,7 +817,7 @@ footer a:hover { text-decoration: underline; }
       const card = document.createElement('article');
       card.className = key === 'ndvi_proxy' ? 'card wide' : 'card';
       card.style.setProperty('--series', `var(${COLORS[key]})`);
-      const noteHtml = key === 'gsr_voltage' ? `<p class="card-note">${GSR_NOTE}</p>` : '';
+      const noteHtml = CARD_NOTES[key] ? `<p class="card-note">${CARD_NOTES[key]}</p>` : '';
       card.innerHTML = `
         <div class="card-head"><span class="swatch"></span><h3>${title}</h3></div>
         <div class="kpi"><span class="value" id="val-${key}">–</span><span class="unit">${unit}</span><span class="delta" id="dl-${key}"></span></div>
@@ -838,6 +848,7 @@ footer a:hover { text-decoration: underline; }
       document.getElementById('val-' + key).textContent = cur == null ? '–' : fmt(cur, dec);
       const ref = hi >= 24 ? o.DATA[key].med[hi - 24] : null;
       const dl = document.getElementById('dl-' + key);
+      if (key === 'gsr_voltage') { dl.textContent = 'last reading, discontinued 31 Oct 2026'; return; }
       if (cur != null && ref != null) {
         const d = cur - ref, r = Math.pow(10, -dec);
         dl.textContent = Math.abs(d) < r/2 ? 'no change vs 24h ago' : `${d > 0 ? '↑' : '↓'} ${fmt(Math.abs(d), dec)} vs 24h ago`;
