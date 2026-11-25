@@ -643,6 +643,10 @@ footer a:hover { text-decoration: underline; }
       <strong>AD8232 (since 31 October 2026):</strong> a biopotential amplifier reading the electrical signal across two leaves through gel pads, with a third pad as reference. It is still being set up: without a filter it picks up a lot of 50 Hz mains hum, so readings swing widely and often sit at the sensor's 3.2 V ceiling. Treat it as experimental until the filter is in.
     </div>
 
+    <div class="note">
+      <strong>Humidity sensor (malfunctioning since 5 November 2026):</strong> the humidity readings have been unreliable since 5 November 2026. Please disregard humidity values from that date on until the sensor is fixed.
+    </div>
+
     <p>The sensor readings and the ring update live, every five minutes. The logged events are still delayed by 24 hours for privacy reasons (this is in my flat, after all).</p>
 
     <p><strong>The ring:</strong> a 12-LED lamp beside Olivito shows how far the plant's tissue signal (GSR) and leaf activity (NDVI) sit from their own recent normal. Blues and greens are calm, ambers and reds are agitated, and it brightens as it climbs. When the two signals disagree, the LEDs alternate between them instead of averaging the conflict away. It rests between 21:00 and 07:00.</p>
@@ -690,7 +694,8 @@ footer a:hover { text-decoration: underline; }
   // Notes shown under a channel's chart
   const CARD_NOTES = {
     gsr_voltage: 'Discontinued on 31 October 2026, replaced by the AD8232. Very low readings indicate disconnected electrodes.',
-    ad8232_voltage: 'Since 31 October 2026. Still picks up mains hum, so readings near 3.2 V are the sensor at its limit, not the plant.'
+    ad8232_voltage: 'Since 31 October 2026. Still picks up mains hum, so readings near 3.2 V are the sensor at its limit, not the plant.',
+    humidity_pct: 'Sensor malfunctioning since 5 November 2026. Readings from that date on are unreliable.'
   };
 
   const LANES = ['Water', 'Touch', 'Meditate', 'Stress', 'Away', 'Note'];
